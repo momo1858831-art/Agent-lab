@@ -130,4 +130,4 @@ if __name__=='__main__':
     ans=agent.run("配置为13英寸、内存为1TB、运行内存为24GB的银色MacBook air怎么样")
     print(ans)
 
-# python -m ReAct.ReAct
+# python -m ReAct.ReAct base文件夹下

@@ -92,7 +92,7 @@ class ReflectionAgent:
         print("\n任务完成,最终结果为:")
         return self.memory.get_last_execution()
 
-# python -m Reflection.Reflection
+# python -m Reflection.Reflection base文件夹下
 if __name__=='__main__':
     llm=LLM()
     agent=ReflectionAgent(llm)

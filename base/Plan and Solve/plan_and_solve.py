@@ -18,7 +18,7 @@ class PlanAndSolveAgent:
         final_answer=self.exceutor.exceute(question,plan)
         print(f"\n任务完成,最终答案为{final_answer}")
 
-# python -m "Plan and Solve.plan_and_solve"
+# python -m "Plan and Solve.plan_and_solve" base文件夹下
 if __name__=='__main__':
     llm=LLM()
     agent=PlanAndSolveAgent(llm)
