@@ -23,7 +23,7 @@ class LLM:
             timeout=self.timeout
         )
 
-    def think(self,messages:List[Dict[str,str]],temperature:float=0):
+    def think(self,messages:List[Dict[str,str]],temperature:float=0,max_tokens:int=10000):
         # 调用LLM进行思考
         # print(f"目前调用的大语言模型为{self.model}:\n")
         try:
@@ -31,6 +31,7 @@ class LLM:
                 model=self.model,
                 messages=messages,
                 temperature=temperature, # temperature越小越稳定 越大回答的创意性越高
+                max_tokens=max_tokens,
                 stream=True
             )
             # 流式响应
