@@ -1,3 +1,4 @@
+import json
 from .tool import Tool
 from typing import Any,Callable
 
@@ -36,3 +37,16 @@ class Toolregistr():
         for name,info in self.functions.items():
             descriptions.append(f"{name}:{info['description']}")
         return "\n".join(descriptions) if descriptions else "暂无可调用工具"
+
+    def execute_tool(self,tool_name:str,input_data:str):
+        if tool_name in self.tools:
+            try:
+                parameters=json.loads(input_data)
+            except json.JSONDecodeError:
+                return "输入数据格式不符合json标准"
+            if not isinstance(parameters,dict):
+                return "工具参数必须是JSON对象"
+            tool=self.tools[tool_name]
+            return tool.run(parameters)
+        else:
+            return f"工具{tool_name}不存在"
