@@ -97,14 +97,6 @@ class SearchTool(Tool):
             results+=f"来源:{item.get('link','')}\n"
         return results
 
-    def get_parameters(self):
-        return [
-            ToolParameter(
-                name="query",
-                type="string",
-                description="需要搜索的关键词或问题",
-            )
-        ]
 
     def run(self,parameters:Dict[str,Any]):
         query=parameters.get("query")

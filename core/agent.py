@@ -1,6 +1,6 @@
 from abc import ABC,abstractmethod
 from typing import Optional,Any
-from .message import Message
+from ..memory.message import Message
 from .config import Config
 from .LLM_extension import LLMExtension
 
