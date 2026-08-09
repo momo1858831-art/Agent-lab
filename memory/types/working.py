@@ -2,12 +2,14 @@ from datetime import datetime,timedelta
 from typing import Dict,List,Any
 from ..base import BaseMemory,MemoryConfig,MemoryItem
 import heapq
+import tiktoken
 
 # 会话级短记忆
 class WorkingMemory(BaseMemory):
 
     def __init__(self,config:MemoryConfig,storage_backend=None):
         super().__init__(config,storage_backend)
+        self.encoding = tiktoken.get_encoding("o200k_base")
         # 工作记忆特定配置
         self.max_capacity=self.config.working_memory_capacity
         self.max_tokens=self.config.working_memory_tokens
@@ -18,9 +20,9 @@ class WorkingMemory(BaseMemory):
         # 优先级队列管理记忆
         self.memory_heap=[] # 存储三元组( priority,memory_itrm.timesatmp,memory_item)
 
-    # 目前token计算尚不完全准确
+    # 计算token数
     def _count_tokens(self,content:str):
-        return len(content)
+        return len(self.encoding.encode(content))
 
     # 更新时间衰减系数
     def _calculate_time_decay(self,timestamp:datetime):
