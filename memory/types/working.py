@@ -327,6 +327,85 @@ class WorkingMemory(BaseMemory):
         scored_memories.sort(key=lambda x:x[0],reverse=True)
         return [memory for _,memory in scored_memories[:limit]]
 
+    # 检查记忆是否存在
+    def has_memory(self,memory_id:str):
+        # 过期清理
+        self._expire_old_memories()
+        return any(memory.id==memory_id for memory in self.memories)
+
+    # 清空记忆
+    def clear(self):
+        self.memories.clear()
+        self.memory_heap.clear()
+        self.current_tokens=0
+
+    # 获取统计信息
+    def get_stats(self):
+        # 过期清理
+        self._expire_old_memories()
+        active_memories=self.memories
+        return{
+            "count":len(active_memories), # 记忆数量
+            "current_tokens":self.current_tokens, # 当前所用token数量
+            "max_capacity":self.max_capacity, # 最大容量
+            "max_tokens":self.max_tokens, # 工作记忆所能容纳最大token数量
+            "max_minutes":self.max_minutes, # TTL
+            "session_duration_minutes":(datetime.now()-self.session_start).total_seconds()/60, # 会话记忆存在时长
+            "avg_importance":sum(m.importance for m in active_memories)/len(active_memories) if len(active_memories) else 0.0, # 所有记忆平均得分
+            "capacity_usage":len(active_memories)/self.max_capacity, # 所用内存比例
+            "token_usage":self.current_tokens/self.max_tokens, # 所用token比
+            "memory_type":"working" # 记忆系统类型
+        }
+
+    # 获取最近若干条记忆
+    def get_recent(self,limit:int=10):
+        # 过期清理
+        self._expire_old_memories()
+        # 降序
+        sorted_memories=sorted(
+            self.memories,
+            key=lambda x:x.timestamp,
+            reverse=True
+        )
+        return sorted_memories[:limit]
+
+    # 获取所有记忆
+    def get_all(self):
+        # 过期清理
+        self._expire_old_memories()
+        return self.memories.copy()
+
+    # 获取上下文摘要
+    def get_context_summary(self,max_length:int=500):
+        # 过期清理
+        self._expire_old_memories()
+        if not self.memories:
+            return "No working memories"
+        # 按重要性和时间排序
+        sorted_memories=sorted(
+            self.memories,
+            key=lambda m:(m.importance,m.timestamp),
+            reverse=True
+        )
+        summary_parts=[]
+        current_length=0
+        for memory in sorted_memories:
+            content=memory.content
+            if current_length+len(content)<=max_length:
+                summary_parts.append(content)
+                current_length+=len(content)
+            else:
+                # 截取最后一个记忆
+                remaining=max_length-current_length
+                # 保留至少50个字符
+                if remaining>50:
+                    summary_parts.append(content[:remaining]+"...")
+                break
+        return "Working Memory Context:\n"+"\n".join(summary_parts)
+
+
+
+
                 
         
 
