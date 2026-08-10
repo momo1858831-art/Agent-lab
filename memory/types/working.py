@@ -3,6 +3,17 @@ from typing import Dict,List,Any
 from ..base import BaseMemory,MemoryConfig,MemoryItem
 import heapq
 import tiktoken
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from dotenv import load_dotenv
+import os
+import hashlib
+import time
+import uuid
+import requests
+
+load_dotenv()
 
 # 会话级短记忆
 class WorkingMemory(BaseMemory):
@@ -159,6 +170,164 @@ class WorkingMemory(BaseMemory):
                     memory.metadata=metadata
                 return True
         return False
+
+    # 截断翻译文本
+    def _truncate_translation_text(self,text:str):
+        if len(text)<=20:
+            return text
+        return f"{text[:10]}{len(text)}{text[-10:]}"
+
+    # 批量翻译英文
+    def _translate_batch_to_english(self,texts:List[str],app_key:str,app_secret:str):
+        # 生成签名参数
+        salt=str(uuid.uuid4())
+        current_time=str(int(time.time()))
+        combined_text="".join(texts)
+        # 待签名字符串
+        sign_text=app_key+self._truncate_translation_text(combined_text)+salt+current_time+app_secret
+        sign=hashlib.sha256(sign_text.encode("utf-8")).hexdigest()
+        # 请求有道翻译
+        response=requests.post(
+            "https://openapi.youdao.com/v2/api",
+            data={
+                "q":texts,
+                "from":"auto",
+                "to":"en",
+                "appKey":app_key,
+                "salt":salt,
+                "sign":sign,
+                "signType":"v3",
+                "curtime":current_time
+            },
+            timeout=15
+        )
+        response.raise_for_status()
+        result=response.json()
+        # 检查翻译结果
+        if str(result.get("errorCode"))!="0":
+            raise RuntimeError(f"有道翻译失败，错误码：{result.get('errorCode')}")
+        translated_items=result.get("translateResults",[])
+        if len(translated_items)!=len(texts):
+            raise RuntimeError("翻译结果数量与输入数量不一致")
+        return [item["translation"] for item in translated_items]
+
+    # 将文本列表翻译为英文
+    def _translate_to_english(self,documents:List[str]):
+        app_key=os.getenv("translate_id")
+        app_secret=os.getenv("translate_key")
+        if not app_key or not app_secret:
+            raise RuntimeError("缺少有道翻译 APP_KEY 或 APP_SECRET")
+        if not documents:
+            return []
+        # 过滤空文本并保留原来的列表位置
+        translated_documents=list(documents) # 浅拷贝 防止修改documents
+        pending=[(index,text) for index,text in enumerate(documents) if text.strip()]
+        # 有道单次最多5000字符 超过时自动分批
+        batches=[]
+        current_batch=[]
+        current_length=0
+        for index,text in pending:
+            if len(text)>5000:
+                raise ValueError("单条文本超过有道翻译的5000字符限制")
+            # 假如当前批次+新文本长度大于5000
+            if current_length+len(text)>5000:
+                # 保存当前批次
+                batches.append(current_batch)
+                # 开始下一批次
+                current_batch=[]
+                current_length=0
+            # 将文本添加到当前批次
+            current_batch.append((index,text))
+            current_length+=len(text)
+        # 如果当前批次有内容(最后一批)
+        if current_batch:
+            batches.append(current_batch)
+        # 分批翻译并恢复原来的列表顺序
+        for batch in batches:
+            indexes=[index for index,_ in batch]
+            texts=[text for _,text in batch]
+            # 批量翻译
+            translations=self._translate_batch_to_english(texts,app_key,app_secret)
+            # 配对
+            for index,translation in zip(indexes,translations):
+                translated_documents[index]=translation
+        return translated_documents
+
+    # 检索记忆
+    def retrieve(self,query:str,limit:int=5,**kwargs):
+        # 清理过时记忆
+        self._expire_old_memories()
+        if not self.memories:
+            return []
+        user_id=kwargs.get("user_id")
+        # 按用户id过滤
+        if user_id:
+            filtered_memories=[m for m in self.memories if m.user_id==user_id]
+        else:
+            filtered_memories=self.memories
+        if not filtered_memories:
+            return []
+        flag=True
+        # 语义向量检索
+        vector_scores={}
+        try:
+            # 准备文档
+            documents=[query]+[m.content for m in filtered_memories]
+            documents=self._translate_to_english(documents)
+            # TF-IDF向量化
+            vectorizer=TfidfVectorizer(stop_words=None,lowercase=True) # 文本向量化器 不删除停用词(比如中文:了、的、地) 大写转小写
+            # 1.学习统一词表 2.将每段文本转化为TF—IDF向量
+            tfidf_matrix=vectorizer.fit_transform(documents)
+            # 计算相似度
+            query_vector=tfidf_matrix[0:1] # 查询向量
+            doc_vector=tfidf_matrix[1:] # 回答向量
+            # 计算查询向量与每条回答向量的相似度 并展开为一维Numpy数组
+            similarities=cosine_similarity(query_vector,doc_vector).flatten()
+            # 存储向量分数
+            for i,memory in enumerate(filtered_memories):
+                vector_scores[memory.id]=similarities[i]
+        except Exception  as e:
+            flag=False
+            vector_scores={}
+            print(f"向量检索失败,失败原因为:{e}")
+        # 计算最终分数
+        query_lower=query.lower()
+        scored_memories=[]
+        for memory in filtered_memories:
+            content_lower=memory.content.lower()
+            # 获取向量分数
+            vector_score=vector_scores.get(memory.id,0.0)
+            # 关键词匹配分数
+            keyword_score=0.0
+            if query_lower in content_lower:
+                keyword_score=self._count_tokens(query_lower)/self._count_tokens(content_lower)
+            else:
+                # 分词匹配
+                query_words=set(self.encoding.encode(query_lower))
+                content_words=set(self.encoding.encode(content_lower))
+                # 取交集
+                intersection=query_words.intersection(content_words)
+                # 计算分词匹配得分
+                if intersection:
+                    keyword_score=len(intersection)/len(query_words.union(content_words))*0.8
+            # 混合分数
+            if flag:
+                base_relevance=vector_score*0.7+keyword_score*0.3
+            else:
+                base_relevance=keyword_score
+            # 时间衰减
+            time_decay=self._calculate_time_decay(memory.timestamp)
+            base_relevance*=time_decay
+            # 重要性权重
+            importance_weight=0.8+(memory.importance*0.4)
+            final_score=base_relevance*importance_weight
+            if final_score>0:
+                scored_memories.append((final_score,memory))
+        # 按分数排序 降序排列
+        scored_memories.sort(key=lambda x:x[0],reverse=True)
+        return [memory for _,memory in scored_memories[:limit]]
+
+                
         
 
             
