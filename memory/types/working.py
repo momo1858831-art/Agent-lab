@@ -137,5 +137,28 @@ class WorkingMemory(BaseMemory):
         self._enforce_capacity_limits()
         return memory_item.id
 
-    
+    # 更新
+    def update(self,memory_id:str,content:str=None,importance:float=None,metadata:Dict[str,Any]=None):
+        # 清理过时记忆
+        self._expire_old_memories()
+        for memory in self.memories:
+            if memory_id==memory.id:
+                old_tokens=self._count_tokens(memory.content)
+                if importance is not None:
+                    memory.importance=importance
+                    self._remove_from_heap(memory_id)
+                    priority=self._calculate_priority(memory)
+                    heapq.heappush(self.memory_heap,(priority,memory.timestamp,memory))
+                if content is not None:
+                    memory.content=content
+                    # 更新token数
+                    new_tokens=self._count_tokens(content)
+                    self.current_tokens=self.current_tokens-old_tokens+new_tokens
+                    self._enforce_capacity_limits()
+                if metadata is not None:
+                    memory.metadata=metadata
+                return True
+        return False
+        
+
             
