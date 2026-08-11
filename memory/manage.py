@@ -150,5 +150,43 @@ class MemoryManager:
         logger.info(f"记忆整合完成:已将{consolidated_count}条记忆从{from_type}移动到{to_type}")
         return consolidated_count
 
+    # 获取记忆统计信息
+    def get_memory_stats(self):
+        stats={
+            "user_id":self.user_id,
+            "enabled_types":list(self.memory_types.keys()),
+            "total_memories":0,
+            "memories_by_type":{},
+            "config":{
+                "max_capacity":self.config.max_capacity,
+                "importance_threshold":self.config.importance_threshold,
+                "decay_factor":self.config.decay_factor
+            }
+        }
+        for memory_type,memory_instance in self.memory_types.items():
+            type_stats=memory_instance.get_stats()
+            stats["memories_by_type"][memory_type]=type_stats
+            stats["total_memories"]+=type_stats.get("count",0)
+        return stats
+
+    # 清空所有记忆
+    def clear_all_memories(self):
+        for memory_type,memory_instance in self.memory_types.items():
+            memory_instance.clear()
+        logger.info("所有记忆已清空")
+
+    # 判断是否为情景记忆内容
+    def _is_episodic_content(self,content:str):
+        episodic_keywords=["昨天","今天","明天","上次","记得","发生","经历"]
+        return any(keyword in content for keyword in episodic_keywords)
+
+    # 判断是否为语义记忆内容
+    def _is_semantic_content(self,content:str):
+        semantic_keywords=["定义","概念","规则","知识","原理","方法"]
+        return any(keyword in content for keyword in semantic_keywords)
+
+    def __str__(self):
+        stats=self.get_memory_stats()
+        return f"MemoryManager(user={self.user_id},total={stats['total_memories']})"
 
     

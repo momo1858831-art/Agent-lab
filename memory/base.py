@@ -77,6 +77,10 @@ class BaseMemory(ABC):
     def _generate_id(self):
         return str(uuid.uuid4())
 
+    @abstractmethod
+    def get_all(self):
+        pass
+
     # 计算记忆重要性
     def _calculate_importance(self,content:str,base_importance:float=0.5):
         importance=base_importance
@@ -97,7 +101,5 @@ class BaseMemory(ABC):
     def __repr__(self):
         return self.__str__()
 
-    @abstractmethod
-    def get_all(self):
-        pass
+    
 
