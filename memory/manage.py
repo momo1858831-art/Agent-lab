@@ -97,5 +97,23 @@ class MemoryManager:
                 except Exception as e:
                     logger.warning(f"检索{memory_type}记忆时出错{e}")
         return all_results[:limit]
-        
+
+    # 删除记忆
+    def remove_memory(self,memory_id:str):
+        # 因为使用的是uuid 所以此id只会出现在一种记忆中 可直接return
+        for memory_type,memory_instance in self.memory_types.items():
+            if memory_instance.has_memory(memory_id):
+                return memory_instance.remove(memory_id)
+        logger.warning(f"未找到记忆:{memory_id}")
+        return False
+
+    # 更新记忆
+    def update_memory(self,memory_id:str,content:str=None,importance:float=None,metadata:Dict[str,Any]=None):
+        for memory_type,memory_instance in self.memory_types.items():
+            if memory_instance.has_memory(memory_id):
+                return memory_instance.update(memory_id,content,importance,metadata)
+        logger.warning(f"未找到记忆:{memory_id}")
+        return False
+
+    
     
