@@ -35,9 +35,9 @@ class MemoryManager:
         # 自动分类记忆类型
         if auto_classify:
             memory_type=self._classify_memory_type(content,metadata)
-        # 计算重要性
+        # 默认重要性 与MemoryItem默认值保持一致
         if importance is None:
-            importance=self._calculate_importance(content,metadata)
+            importance=0.5
         # 创建记忆项
         memory_item=MemoryItem(
             id=str(uuid.uuid4()),
@@ -60,21 +60,42 @@ class MemoryManager:
     def _classify_memory_type(self,content:str,metadata:Optional[Dict[str,Any]]):
         pass
 
-    def _calculate_importance(self,content:str,metadata:Optional[Dict[str,Any]]=None):
-        importance=0.5
-        # 基于内容长度
-        if len(content)>100:
-            importance+=0.1
-        # 基于关键词
-        importance_keywords=["重要","关键","必须","注意","警告","错误"]
-        if any(keyword in content for keyword in importance_keywords):
-            importance+=0.2
-        # 基于元数据
-        if metadata:
-            if metadata.get("priority")=="high":
-                importance+=0.3
-            elif metadata.get("priority")=="low":
-                importance-=0.3
-        return max(0.0,min(1.0,importance))
+
+    # 检索记忆
+    def retrieve_memories(self,query:str,memory_types:Optional[List[str]]=None,limit:int=10,min_importance:float=0.0,time_range:Optional[tuple]=None):
+        """
+            query:查询内容
+            momories_types:要检索的记忆类型
+            limit:返回数量限制
+            min_importance:最小重要性阈值
+            time_range:时间范围
+        """
+        # 若未指定则默认寻找所有记忆类型
+        if memory_types is None:
+            memory_types=list(self.memory_types.keys())
+        if not memory_types:
+            return []
+        # 从各个记忆类型中探索
+        all_results=[]
+        # 每个类型的记忆最多返回的数量
+        per_type_limit=max(1,limit//len(memory_types))
+        for memory_type in memory_types:
+            if memory_type in self.memory_types:
+                memory_instance=self.memory_types[memory_type]
+                try:
+                    # 每个记忆类型使用自己的检索方法
+                    types_results=memory_instance.retrieve(
+                        query=query,
+                        limit=per_type_limit,
+                        user_id=self.user_id,
+                        min_importance=min_importance,
+                        time_range=time_range
+                    )
+                    all_results.extend(types_results)
+                except ValueError:
+                    raise
+                except Exception as e:
+                    logger.warning(f"检索{memory_type}记忆时出错{e}")
+        return all_results[:limit]
         
     

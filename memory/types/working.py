@@ -265,6 +265,22 @@ class WorkingMemory(BaseMemory):
             filtered_memories=[m for m in self.memories if m.user_id==user_id]
         else:
             filtered_memories=self.memories
+        # 最小重要性得分过滤
+        min_importance=kwargs.get("min_importance")
+        if min_importance is not None:
+            if min_importance<0 or min_importance>1:
+                raise ValueError("最小重要性阈值必须在0到1之间")
+            filtered_memories=[m for m in filtered_memories if m.importance>=min_importance] 
+        # 按时间范围过滤
+        time_range=kwargs.get("time_range")
+        if time_range is not None:
+            if len(time_range)!=2:
+                raise ValueError("时间范围必须仅包含开始时间和结束时间")
+            start_time=time_range[0]
+            end_time=time_range[1]
+            if start_time>end_time:
+                raise ValueError("开始时间应小于等于结束时间")
+            filtered_memories=[m for m in filtered_memories if m.timestamp>=start_time and m.timestamp<=end_time]
         if not filtered_memories:
             return []
         flag=True
