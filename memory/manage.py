@@ -115,5 +115,40 @@ class MemoryManager:
         logger.warning(f"未找到记忆:{memory_id}")
         return False
 
-    
+    # 整合记忆
+    def consolidate_memories(self,from_type:str="working",to_type:str="episodic",importance_threshold:float=0.7):
+        """
+            from_type 源记忆类型
+            to_type:目标记忆类型
+            importance_threshold:重要性阈值
+        """
+        if not 0<=importance_threshold<=1:
+            raise ValueError("importance_threshold应在0到1之间")
+        if from_type==to_type:
+            logger.warning("记忆类型相同,无需整合")
+            return 0
+        if from_type not in self.memory_types or to_type not in self.memory_types:
+            logger.warning(f"记忆类型不存在:{from_type}->{to_type}")
+            return 0
+        source_memory=self.memory_types[from_type]
+        target_memory=self.memory_types[to_type]
+        # 获取需要整合的记忆
+        all_memories=source_memory.get_all()
+        # 重要性阈值过滤
+        candidates=[
+            m for m in all_memories if m.importance>=importance_threshold
+        ]
+        # 移动记忆数量
+        consolidated_count=0
+        for memory in candidates:
+            # 移动到目标类型记忆
+            if source_memory.remove(memory.id):
+                memory.memory_type=to_type
+                memory.importance=min(1.0,1.1*memory.importance) # 提高重要性
+                target_memory.add(memory)
+                consolidated_count+=1
+        logger.info(f"记忆整合完成:已将{consolidated_count}条记忆从{from_type}移动到{to_type}")
+        return consolidated_count
+
+
     
