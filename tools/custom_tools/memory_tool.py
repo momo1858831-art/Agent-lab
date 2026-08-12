@@ -5,7 +5,7 @@ from ...memory.manage import MemoryManager
 from typing import Dict,List,Any,Optional
 from datetime import datetime
 
-class MeMmoryTool(Tool):
+class MemoryTool(Tool):
 
     def __init__(self,user_id:str="default_user",memory_config:MemoryConfig=None,memory_types:List[str]=None):
         super().__init__(name="memory",description="记忆工具 可以存储和检索对话历史")
@@ -204,4 +204,106 @@ class MeMmoryTool(Tool):
             return "\n".join(summary_parts)
         except Exception as e:
             return f"获取摘要失败:{e}"
-            
+
+    # 获取统计信息
+    def _get_stats(self):
+        try:
+            stats=self.memory_manager.get_memory_stats()
+            stats_info=[
+                f"记忆系统统计:",
+                f"总记忆数:{stats['total_memories']}",
+                f"启用的记忆类型:{','.join(stats['enabled_types'])}",
+                f"会话ID:{self.current_session_id or '未开始'}",
+                f"会话轮次:{self.conversation_count}"
+            ]
+            return '\n'.join(stats_info)
+        except Exception as e:
+            return f"获取统计信息失败:{e}"
+
+    def _update_memory(self,memory_id:str,content:str=None,importance:float=None,**metadata):
+        try:
+            success=self.memory_manager.update_memory(
+                memory_id=memory_id,
+                content=content,
+                importance=importance,
+                metadata=metadata or None
+            )
+            return "记忆已更新" if success else "未找到此记忆项"
+        except Exception as e:
+            return f"记忆更新失败:{e}"
+
+    def _remove_memory(self,memory_id:str):
+        try:
+            success=self.memory_manager.remove_memory(
+                memory_id=memory_id
+            )
+            return "记忆已删除" if success else "未找到此记忆项"
+        except Exception as e:
+            return f"记忆删除失败:{e}"
+
+    def _consolidate(self,from_type:str="working",to_type:str="episodic",importance_threshold:float=0.7):
+        try:
+            count=self.memory_manager.consolidate_memories(
+                from_type=from_type,
+                to_type=to_type,
+                importance_threshold=importance_threshold
+            )
+            return f"已整合{count}条记忆,{from_type}->{to_type}"
+        except Exception as e:
+            return f"记忆整合失败:{e}"
+
+    def _clear_all(self):
+        try:
+            self.memory_manager.clear_all_memories()
+            return "已清空所有记忆"
+        except Exception as e:
+            return f"记忆清空失败:{e}"
+
+    # 添加知识到语义记忆 便捷方法
+    def add_knowledge(self,content:str,importance:float=0.9):
+        return self._add_memory(
+            content=content,
+            memory_type="semantic",
+            importance=importance,
+            knowledge_type="factual",
+            source="manual"
+        )
+
+    # 自动记录对话
+    def auto_record_conversation(self,user_input:str,agent_response:str):
+        self.conversation_count+=1
+        # 记录用户输入
+        self._add_memory(
+            content=f"用户:{user_input}",
+            memory_type="working",
+            importance=0.6,
+            type="user_input",
+            conversation_id=self.conversation_count
+        )
+        # 记录Agent响应
+        self._add_memory(
+            content=f"助手:{agent_response}",
+            memory_type="working",
+            importance=0.7,
+            type="agent_response",
+            conversation_id=self.conversation_count
+        )
+        # 如果是重要对话 保存至情景记忆
+        if len(agent_response)>100 or "重要" in user_input or "记住" in user_input:
+            interaction_content=f"对话:\n用户:{user_input}\n助手:{agent_response}"
+            self._add_memory(
+                content=interaction_content,
+                memory_type="episodic",
+                importance=0.8,
+                type="interaction",
+                conversation_id=self.conversation_count
+            )
+
+    # 结束当前会话并清空临时工作记忆
+    def clear_session(self):
+        self.current_session_id=None
+        self.conversation_count=0
+        # 判断memory_manager是否有memory_types属性
+        wm=self.memory_manager.memory_types.get('working') if hasattr(self.memory_manager,'memory_types') else None
+        if wm:
+            wm.clear()

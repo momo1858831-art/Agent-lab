@@ -18,6 +18,10 @@ class Tool(ABC):
     def get_parameters(self):
         pass
 
+    def validate_parameters(self,parameters:Dict[str,Any]):
+        required_params=[p.name for p in self.get_parameters() if p.required]
+        return all(param in parameters for param in required_params)
+
     # 转换为openai function calling schema格式
     def to_open_schema(self):
         parameters=self.get_parameters()
