@@ -15,13 +15,14 @@ class MemoryManager:
             config:Optional[MemoryConfig]=None,
             user_id:str="default_user",
             enable_working:bool=True,
+            storage_backend:Any=None
     ):
         self.config=config or MemoryConfig()
         self.user_id=user_id
         # 初始化各记忆类型
         self.memory_types={}
         if enable_working:
-            self.memory_types['working']=WorkingMemory(self.config)
+            self.memory_types['working']=WorkingMemory(config=self.config,storage_backend=storage_backend)
         logger.info(f"MemoryManager初始化完成,可用记忆类型为:{list(self.memory_types.keys())}")
 
     def add_memory(self,content:str,memory_type:str="working",importance:Optional[float]=None,metadata:Optional[Dict[str,Any]]=None,auto_classify:bool=False):

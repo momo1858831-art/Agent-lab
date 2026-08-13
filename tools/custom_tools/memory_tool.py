@@ -7,14 +7,15 @@ from datetime import datetime
 
 class MemoryTool(Tool):
 
-    def __init__(self,user_id:str="default_user",memory_config:MemoryConfig=None,memory_types:List[str]=None):
+    def __init__(self,user_id:str="default_user",memory_config:MemoryConfig=None,memory_types:List[str]=None,storage_backend:Any=None):
         super().__init__(name="memory",description="记忆工具 可以存储和检索对话历史")
         self.memory_config=memory_config or MemoryConfig()
         self.memory_types=memory_types or ["working","episodic","semantic","perceptual"]
         self.memory_manager=MemoryManager(
             config=self.memory_config,
             user_id=user_id,
-            enable_working="working" in self.memory_types
+            enable_working="working" in self.memory_types,
+            storage_backend=storage_backend
         )
         self.current_session_id=None
         self.conversation_count=0
@@ -175,32 +176,18 @@ class MemoryTool(Tool):
                         "perceptual":"感知记忆"
                     }.get(memory_type,memory_type)
                     summary_parts.append(f"{type_label}:{count}条 平均重要性{avg_importance}")
-            # 获取重要记忆 修复重复问题
-            importance_memories=self.memory_manager.retrieve_memories(
-                query="",
-                memory_types=None, # 搜索所有记忆类型
-                limit=limit,
+            importance_memories=[]
+            for memory_instance in self.memory_manager.memory_types.values():
+                importance_memories.extend(memory_instance.get_all())
+            importance_memories.sort(
+                key=lambda memory:(memory.importance,memory.timestamp),
+                reverse=True
             )
-            if importance_memories:
-                # 去重:使用记忆ID和内容双去重
-                seen_ids=set()
-                seen_contents=set()
-                unique_memories=[]
-                for memory in importance_memories:
-                    # 使用ID去重
-                    if memory.id in seen_ids:
-                        continue
-                    # 使用内容去重
-                    content_key=memory.content.strip().lower()
-                    if content_key in seen_contents:
-                        continue;
-                    seen_ids.add(memory.id)
-                    seen_contents.add(content_key)
-                    unique_memories.append(memory)
-                summary_parts.append(f"\n {len(unique_memories)}条重要记忆如下")
-                for i,memory in enumerate(unique_memories):
-                    content_preview=memory.content[:80]+"..." if len(memory.content)>80 else memory.content
-                    summary_parts.append(f"{i+1}.{content_preview}")
+            importance_memories=importance_memories[:limit] # 长度不够会自动停止
+            summary_parts.append(f"\n {len(importance_memories)}条重要记忆如下")
+            for i,memory in enumerate(importance_memories):
+                content_preview=memory.content[:80]+"..." if len(memory.content)>80 else memory.content
+                summary_parts.append(f"{i+1}.{content_preview}")
             return "\n".join(summary_parts)
         except Exception as e:
             return f"获取摘要失败:{e}"
