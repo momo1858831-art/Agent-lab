@@ -252,6 +252,17 @@ class MemoryTool(Tool):
         except Exception as e:
             return f"记忆整合失败:{e}"
 
+    def _forget(self,strategy:str="importance_based",threshold:float=0.1,max_age_days:int=30):
+        try:
+            count=self.memory_manager.forget_memories(
+                strategy=strategy,
+                threshold=threshold,
+                max_age_days=max_age_days
+            )
+            return f"已遗忘{count}条记忆,当前遗忘所使用的策略为{strategy}"
+        except Exception as e:
+            return f"记忆遗忘失败:{e}"
+
     def _clear_all(self):
         try:
             self.memory_manager.clear_all_memories()

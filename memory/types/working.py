@@ -419,6 +419,46 @@ class WorkingMemory(BaseMemory):
                 break
         return "Working Memory Context:\n"+"\n".join(summary_parts)
 
+    # 遗忘机制
+    def forget(self,strategy:str="importance_based",threshold:float=0.1,max_age_days:int=30):
+        forgotton_count=0
+        current_time=datetime.now()
+        to_remove=[]
+        # TTL过期 任何遗忘策略
+        cutoff_ttl=current_time-timedelta(minutes=self.max_minutes)
+        for memory in self.memories:
+            if memory.timestamp<cutoff_ttl:
+                to_remove.append(memory.id)
+        # 重要性阈值遗忘策略
+        if strategy=="importance_based":
+            # 删除低重要性记忆
+            for memory in self.memories:
+                if memory.importance<threshold:
+                    to_remove.append(memory.id)
+        # 删除过期记忆(与TTL不同)
+        elif strategy=="time_based":
+            cutoff_time=current_time-timedelta(hours=max_age_days*24)
+            for memory in self.memories:
+                if memory.timestamp<cutoff_time:
+                    to_remove.append(memory.id)
+        # 删除超出容量的记忆(add时已检查实际不会触发)
+        elif strategy=="capacity_based":
+            if len(self.memories)>self.max_capacity:
+                sorted_memories=sorted(
+                    self.memories,
+                    key=lambda m:self._calculate_priority(m)
+                )
+                excess_count=len(self.memories)-self.max_capacity
+                for memory in sorted_memories[:excess_count]:
+                    to_remove.append(memory.id)
+        to_remove=set(to_remove)
+        # 删除
+        for memory_id in to_remove:
+            if self.remove(memory_id):
+                forgotton_count+=1
+        return forgotton_count
+
+
 
 
 

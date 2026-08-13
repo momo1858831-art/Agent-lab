@@ -150,6 +150,24 @@ class MemoryManager:
         logger.info(f"记忆整合完成:已将{consolidated_count}条记忆从{from_type}移动到{to_type}")
         return consolidated_count
 
+    # 遗忘记忆
+    def forget_memories(self,strategy:str="importance_based",threshold:float=0.1,max_age_days:int=30):
+        """
+            strategy:遗忘策略
+            threshold:遗忘阈值
+            max_age_days:最大保存天数
+        """
+        total_forgotten=0
+        for memory_type,memory_instance in self.memory_types.items():
+            # 检查是否有forget属性(方法也可看作属性)
+            # 安全起见,这里可以用callable()
+            if callable(getattr(memory_instance,"forget",None)):
+                forgotten=memory_instance.forget(strategy,threshold,max_age_days)
+                total_forgotten+=forgotten
+        logger.info(f"记忆遗忘完成:{total_forgotten}条记忆")
+        return total_forgotten
+
+
     # 获取记忆统计信息
     def get_memory_stats(self):
         stats={
@@ -187,6 +205,6 @@ class MemoryManager:
 
     def __str__(self):
         stats=self.get_memory_stats()
-        return f"MemoryManager(user={self.user_id},total={stats['total_memories']})"
+        return f"MemoryManager(user={self.user_id},total={stats['total_memories']})"    
 
     
