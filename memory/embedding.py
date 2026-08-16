@@ -110,3 +110,51 @@ class LocalTransformerEmbedding(EmbeddingModel):
     @property
     def dimension(self):
         return int(self._dimension or 0)
+
+class TFIDFEmbedding(EmbeddingModel):
+
+    # TF 词在当前文档中的重要程度
+    # IDF 词在全部文档中的稀有程度
+
+    def __init__(self,max_features:int=1000):
+        self.max_features=max_features
+        self._vectorizer=None # TF-IDF向量器
+        self._is_fitted=False # 向量器是否建立词表
+        self._dimension=max_features # 向量维度上限
+        self._init_vectorizer()
+
+    # 初始化编码器
+    def _init_vectorizer(self):
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            # 词表最多保留多少特征词 自动忽略英文停用词,例如the is are a and of
+            self._vectorizer=TfidfVectorizer(max_features=self.max_features,stop_words="english")
+        except ImportError:
+            raise ImportError("请安装scikit-learn")
+
+    # 建立词表并计算IDF
+    def fit(self,texts:List[str]):
+        self._vectorizer.fit(texts)
+        self._is_fitted=True
+        # 词表长度 即向量维度
+        self._dimension=len(self._vectorizer.get_feature_names_out())
+
+    # 计算TF-IDF向量
+    def encode(self,texts:Union[str,List[str]]):
+        if not self._is_fitted:
+            raise ValueError("TF-IDF模型未训练,请先调用fit方法")
+        single=False
+        if isinstance(texts,str):
+            texts=[texts]
+            single=True
+        # 稀疏矩阵
+        tfidf_matrix=self._vectorizer.transform(texts)
+        # 转化为普通数组
+        embeddings=tfidf_matrix.toarray()
+        if single:
+            return embeddings[0]
+        return [e for e in embeddings]
+
+    @property
+    def dimension(self):
+        return self._dimension
