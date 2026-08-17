@@ -1,5 +1,10 @@
 from typing import Union,List,Dict,Optional
 import torch
+import os
+from dotenv import load_dotenv
+import openai
+
+load_dotenv()
 
 # 嵌入模型基类
 class EmbeddingModel:
@@ -158,3 +163,46 @@ class TFIDFEmbedding(EmbeddingModel):
     @property
     def dimension(self):
         return self._dimension
+
+# 调用Embedding API
+class APIEmbedding(EmbeddingModel):
+
+    def __init__(self,model_name:Optional[str]=None,api_key:Optional[str]=None,base_url:Optional[str]=None):
+        self.model_name=model_name or os.getenv("embedding_model")
+        self.api_key=api_key or os.getenv("embedding_api")
+        self.base_url=base_url or os.getenv("embedding_baseurl")
+        self._dimension=None
+
+    def encode(self,texts:Union[str,List[str]]):
+        if not self.api_key:
+            raise ValueError("API_KEY未配置")
+        if not self.base_url:
+            raise ValueError("BASE_URL未配置")
+        if not self.model_name:
+            raise ValueError("MODEL未配置")
+        single=False
+        if isinstance(texts,str):
+            inputs=[texts]
+            single=True
+        else:
+            inputs=texts
+        client=openai.OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url
+        )
+        response=client.embeddings.create(
+            input=inputs,
+            model=self.model_name
+        )
+        vecs=[item.embedding for item in response.data]
+        self._dimension=len(vecs[0])
+        if single:
+            return vecs[0]
+        return vecs
+
+    @property
+    def dimension(self):
+        return self._dimension or 0
+       
+    
+    
