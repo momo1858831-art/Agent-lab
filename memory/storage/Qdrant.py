@@ -181,3 +181,32 @@ class QdrantVectorStore:
             logger.error(f"集合初始化失败:{e}")
             raise
     
+    # 创建payload索引 快速找到符合条件的数据
+    def _ensure_payload_indexes(self):
+        try:
+            index_fields=[
+                ("memory_type",models.PayloadSchemaType.KEYWORD),
+                ("user_id",models.PayloadSchemaType.KEYWORD),
+                ("memory_id",models.PayloadSchemaType.KEYWORD),
+                ("timestamp",models.PayloadSchemaType.INTEGER),
+                ("modality",models.PayloadSchemaType.KEYWORD),  # 感知记忆模态筛选
+                ("source",models.PayloadSchemaType.KEYWORD),
+                ("external",models.PayloadSchemaType.BOOL),
+                ("namespace",models.PayloadSchemaType.KEYWORD),
+                # RAG相关字段索引
+                ("is_rag_data",models.PayloadSchemaType.BOOL),
+                ("rag_namespace",models.PayloadSchemaType.KEYWORD),
+                ("data_source",models.PayloadSchemaType.KEYWORD),
+            ]
+            for field_name,schema_type in index_fields:
+                try:
+                    # 为哪个集合的哪个payload字段创建索引
+                    self.client.create_payload_index(
+                        collection_name=self.collection_name,
+                        field_name=field_name,
+                        field_schema=schema_type # 字段类型
+                    )
+                except Exception as e:
+                    logger.debug(f"索引{field_name}已存在或创建失败:{e}")
+        except Exception as e:
+            logger.debug(f"创建payload失败:{e}")
