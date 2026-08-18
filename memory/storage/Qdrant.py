@@ -92,6 +92,7 @@ class QdrantVectorStore:
         except Exception:
             self.hnsw_ef_construct=256
         # 查询时的搜索范围
+        # 搜索过程中,保留与查询向量最接近的search_ef个候选向量。
         try:
             self.search_ef=int(os.getenv("QDRANT_SEARCH_EF","128"))
         except Exception:
@@ -277,4 +278,71 @@ class QdrantVectorStore:
             logger.error(f"添加向量失败:{e}")
             return False
 
+    # 搜索相似向量
+    def search_similar(
+            self,
+            query_vector:List[float], # 查询向量
+            limit:int=10, # 返回结果数量限制
+            score_threshold:Optional[float]=None, # 相似度阈值
+            where:Optional[Dict[str,Any]]=None # 过滤条件
+    ):
+        try:
+            if len(query_vector)!=self.vector_size:
+                logger.error(f"查询向量维度错误,期望维度为{self.vector_size}")
+                return []
+            # 构建过滤器
+            query_filter=None
+            if where:
+                conditions=[]
+                for key,value in where.items():
+                    if isinstance(value,(str,int,float,bool)):
+                        # 检查payload字段
+                        # payload[key]=value
+                        conditions.append(
+                            FieldCondition(
+                                key=key, # 指定字段名称
+                                # 精准匹配
+                                match=MatchValue(value=value) # 字段值是否等于value
+                            )
+                        )
+                if conditions:
+                    # must表示所有条件均需满足
+                    query_filter=Filter(must=conditions)
+            # 搜索参数
+            search_params=None
+            # 构造搜索配置对象
+            try:
+                search_params=models.SearchParams(
+                    hnsw_ef=self.search_ef, # 搜索范围
+                    exact=self.search_exact # 精确搜索(符合过滤条件的所有向量)
+                )
+            except Exception as e:
+                search_params=None
+            # 执行搜索
+            search_results=self.client.query_points(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=True, # 返回结果包含payload字段
+                with_vectors=False, # 不返回原始向量
+                search_params=search_params
+            )
+            # 转换结果格式 原先为ScorePoint对象,包含id score payload vector等
+            results=[]
+            for hit in search_results:
+                result={
+                    "id":hit.id, # 插入数据时该数据的ID
+                    "score":hit.score, # 相似度分数
+                    "metadata":hit.payload or {} # 元数据
+                }
+                results.append(result)
+            logger.debug(f"Qdrant搜索返回{len(results)}条结果")
+            return results
+        except Exception as e:
+            logger.error(f"向量搜索失败:{e}")
+            return []
+            
+        
 
