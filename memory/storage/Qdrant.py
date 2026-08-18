@@ -352,6 +352,7 @@ class QdrantVectorStore:
             operation_info=self.client.delete(
                 collection_name=self.collection_name,
                 # 数据点ID选择器 设置删除点
+                # PointIdsList按ID删除
                 points_selector=models.PointIdsList(
                     points=ids
                 ),
@@ -363,6 +364,94 @@ class QdrantVectorStore:
             logger.error(f"删除向量失败:{e}")
             return False
 
+    # 清空集合
+    def clear_collection(self):
+        try:
+            # 删除集合
+            self.client.delete_collection(collection_name=self.collection_name)
+            # 重新创建集合
+            self._ensure_collection()
+            logger.info(f"成功清空Qdrant集合:{self.collection_name}")
+            return True
+        except Exception as e:
+            logger.error(f"清空集合失败:{e}")
+            return False
+
+    # 删除指定记忆(为后续记忆系统类型扩展做铺垫)
+    def delete_memories(self,memory_ids:List[str]):
+        try:
+            if not memory_ids:
+                return
+            # payload[memory_id]=mid
+            # 按ID过滤用HasIdCondition
+            conditions=[
+                FieldCondition(
+                    key="memory_id",
+                    match=MatchValue(value=mid)
+                )
+                for mid in memory_ids
+            ]
+            query_filter=Filter(should=conditions) # 满足一个条件即可
+            self.client.delete(
+                collection_name=self.collection_name,
+                # FilterSelector按payload字段删除
+                points_selector=models.FilterSelector(
+                    filter=query_filter
+                ),
+                wait=True
+            )
+            logger.info(f"成功按memory_id删除{len(memory_ids)}条记忆")
+        except Exception as e:
+            logger.error(f"删除记忆失败:{e}")
+            raise
+
+    # 获取集合信息
+    def get_collection_info(self):
+        try:
+            # 获取指定集合的基本信息
+            collection_info=self.client.get_collection(self.collection_name)
+            info={
+                "name":self.collection_name,
+                # 已经建立专用向量索引的向量数
+                "indexed_vectors_count":collection_info.indexed_vectors_count,
+                # 数据点数量(一个数据点可能包含多个向量 此处没用)
+                "points_count":collection_info.points_count,
+                # 每个集合可能划分为多个Segment 提高效率,如并行搜索 避免每次数据变化都操作整个集合
+                "segments_count":collection_info.segments_count,
+                "config":{
+                    "vector_size":self.vector_size,
+                    "distance":self.distance.value,
+                }
+            }
+            return info
+        except Exception as e:
+            logger.error(f"获取集合信息失败:{e}")
+            return {}
+
+    def get_collection_stats(self):
+        info=self.get_collection_info()
+        if not info:
+            return {"store_type":"qdrant","name":self.collection_name}
+        info["store_type"]="qdrant"
+        return info
+
+    # 健康检查
+    def health_check(self):
+        try:
+            collections=self.client.get_collections()
+            return True
+        except Exception as e:
+            logger.error(f"Qdrant健康检查失败:{e}")
+            return False
+
+    # 析构函数 关闭当前QdrantClient 不会删除Qdrant的向量
+    # 复用该QdrantClient的调用者也会收到影响 适合整个应用退出时调用
+    def __del__(self):
+        if hasattr(self,'client') and self.client:
+            try:
+                self.client.close()
+            except:
+                pass
             
         
 
