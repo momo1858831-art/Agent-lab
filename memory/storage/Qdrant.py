@@ -210,3 +210,71 @@ class QdrantVectorStore:
                     logger.debug(f"索引{field_name}已存在或创建失败:{e}")
         except Exception as e:
             logger.debug(f"创建payload失败:{e}")
+
+    def add_vectors(
+            self,
+            vectors:List[List[float]], # 向量
+            metadata:List[Dict[str,Any]], # 元数据
+            ids:Optional[List[str]]=None # ID列表
+    ):
+        try:
+            if not vectors:
+                logger.warning("向量列表为空")
+                return False
+            # 生成ID
+            if ids is None:
+                ids=[
+                    f"vec_{i}{int(datetime.now().timestamp()*1000000)}"
+                    for i in range(len(vectors))
+                ]
+            # 构建点数据
+            logger.info(f"[Qdrant] add_vectors start: n_vectors={len(vectors)} n_metadata={len(metadata)} collection={self.collection_name}")
+            points=[]
+            for i,(vector,meta,point_id) in enumerate(zip(vectors,metadata,ids)):
+                # 确保向量是正确维度
+                vlen=len(vector)
+                if vlen!=self.vector_size:
+                    logger.warning(f"向量维度不匹配,期望维度为{self.vector_size}")
+                    continue
+                # 添加时间戳到元数据
+                meta_with_timestamp=meta.copy()
+                meta_with_timestamp["timestamp"]=int(datetime.now().timestamp())
+                meta_with_timestamp["added_at"]=int(datetime.now().timestamp())
+                if "external" in meta_with_timestamp and not isinstance(meta_with_timestamp.get("external"),bool):
+                    val=meta_with_timestamp.get("external")
+                    meta_with_timestamp["external"]=True if str(val).lower() in {"1","true","yes"} else False
+                # 确保点ID是Qdrant接受的类型(无符号整数或uuid)
+                safe_id:Any
+                if isinstance(point_id,int):
+                    safe_id=point_id
+                elif isinstance(point_id,str):
+                    try:
+                        uuid.UUID(point_id)
+                        safe_id=point_id
+                    except Exception as e:
+                        safe_id=str(uuid.uuid4())
+                else:
+                    safe_id=str(uuid.uuid4())
+                point=PointStruct(
+                    id=safe_id, # 唯一标识
+                    vector=vector, # 用于相似度计算
+                    payload=meta_with_timestamp # 元数据
+                )
+                points.append(point)
+                if not points:
+                    logger.warning("没有有效的向量点")
+                    return False
+                # 批量插入
+                operation_info=self.client.upsert(
+                    collection_name=self.collection_name,
+                    points=points,
+                    wait=True
+                )
+                logger.info("[Qdrant] upsert done")
+                logger.info(f"成功添加{len(points)}个向量到Qdrant")
+                return True
+        except Exception as e:
+            logger.error(f"添加向量失败:{e}")
+            return False
+
+
