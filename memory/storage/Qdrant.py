@@ -33,7 +33,7 @@ class QdrantConnectionManager:
         cls,
         url:Optional[str]=None, # Qdrant服务器地址
         api_key:Optional[str]=None, # Qdrant服务器认证密钥
-        collection_name:str="hello_agents_vectors", # 要使用的Qdrant集合名称
+        collection_name:str="hello_agents_vectors", # Qdrant拥有的集合名称
         vector_size:int=384, # 向量维度
         distance:str="cosine", # 计算向量相似度的方法
         timeout:int=30,
@@ -68,7 +68,7 @@ class QdrantVectorStore:
             self,
             url:Optional[str]=None, # Qdrant服务器地址
             api_key:Optional[str]=None, # Qdrant服务器认证密钥
-            collection_name:str="hello_agents_vectors", # 要使用的Qdrant集合名称
+            collection_name:str="hello_agents_vectors", # Qdrant拥有的集合名称
             vector_size:int=384, # 向量维度
             distance:str="cosine", # 计算向量相似度的方法
             timeout:int=30,
@@ -137,4 +137,47 @@ class QdrantVectorStore:
             logger.info(f"Qdrant连接失败:{e}")
             raise
 
+    # 确保集合存在 不存在则创建
+    def _ensure_collection(self):
+        try:
+            # 检查结合是否存在
+            collections=self.client.get_collections().collections
+            collection_names=[c.name for c in collections]
+            if self.collection_name not in collection_names:
+                # 创建新集合
+                hnsw_cfg=None
+                try:
+                    # 同时保存hnsw_m hnsw_ef_construct
+                    hnsw_cfg=models.HnswConfigDiff(
+                        m=self.hnsw_m,
+                        ef_construct=self.hnsw_ef_construct
+                    )
+                except Exception as e:
+                    hnsw_cfg=None
+                self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(
+                        size=self.vector_size,
+                        distance=self.distance
+                    ),
+                    hnsw_config=hnsw_cfg
+                )
+                logger.info(f"创建Qdrant集合:{self.collection_name}")
+            else:
+                logger.info(f"使用现有Qdrant集合:{self.collection_name}")
+                # 尝试更新HNSW配置
+                try:
+                    self.client.update_collection(
+                        collection_name=self.collection_name,
+                        hnsw_config=models.HnswConfigDiff(
+                            m=self.hnsw_m,
+                            ef_construct=self.hnsw_ef_construct
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"跳过更新HNSW配置:{e}")
+            self._ensure_payload_indexes()
+        except Exception as e:
+            logger.error(f"集合初始化失败:{e}")
+            raise
     
