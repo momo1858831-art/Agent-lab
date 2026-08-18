@@ -250,6 +250,7 @@ class QdrantVectorStore:
                     safe_id=point_id
                 elif isinstance(point_id,str):
                     try:
+                        # 验证point_id是否为uuid格式的字符串 但不会改变point_id
                         uuid.UUID(point_id)
                         safe_id=point_id
                     except Exception as e:
@@ -257,7 +258,7 @@ class QdrantVectorStore:
                 else:
                     safe_id=str(uuid.uuid4())
                 point=PointStruct(
-                    id=safe_id, # 唯一标识
+                    id=safe_id, # 唯一标识 无符号整数或uuid格式的字符串
                     vector=vector, # 用于相似度计算
                     payload=meta_with_timestamp # 元数据
                 )
@@ -343,6 +344,25 @@ class QdrantVectorStore:
         except Exception as e:
             logger.error(f"向量搜索失败:{e}")
             return []
+
+    def delete_vectors(self,ids:List[str]):
+        try:
+            if not ids:
+                return True
+            operation_info=self.client.delete(
+                collection_name=self.collection_name,
+                # 数据点ID选择器 设置删除点
+                points_selector=models.PointIdsList(
+                    points=ids
+                ),
+                wait=True # 等待删除真正完成后再返回
+            )
+            logger.info(f"成功删除{len(ids)}个向量")
+            return True
+        except Exception as e:
+            logger.error(f"删除向量失败:{e}")
+            return False
+
             
         
 
