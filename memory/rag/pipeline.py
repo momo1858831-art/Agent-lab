@@ -1,4 +1,5 @@
 import os
+from typing import List,Dict,Optional,Any
 
 def _get_markdown_instance():
     try:
@@ -158,5 +159,98 @@ def _post_process_pdf_text(text:str):
         paragraphs.append(' '.join(current_paragraph))
     return '\n\n'.join(paragraphs)
 
+# 检测一段文本使用的主要语言 中文/英文...
+def _detect_lang(sample:str):
+    try:
+        from langdetect import detect
+        return detect(sample[:1000]) if sample else "unknown"
+    except Exception:
+        return "unknown"
+
+# 判断一个字符是否为汉字
+def _is_cjk(ch:str):
+    if len(ch)!=1:
+        return False
+    # 将字符转化为Unicode码点整数
+    code=ord(ch)
+    return (
+        # 判断是否为汉字
+        0x4E00<=code<=0x9FFF or # 常用汉字
+        0x3400<=code<=0x4DBF or # 扩展A区 一血少见汉字
+        0x20000<=code<=0x2A6DF or # 扩展B区 生僻字
+        0x2A700<=code<=0x2B73F or # ...
+        0x2B740<=code<=0x2B81F or
+        0x2B820<=code<=0x2CEAF or
+        0xF900<=code<=0xFAFF
+    )
+
+# 计算一段文本的token数量
+def _approx_token_len(text:str):
+    try:
+        import tiktoken
+        return len(tiktoken.get_encoding("o200k_base").encode(text))
+    except ImportError:
+        # 中文
+        cjk=sum(1 for ch in text if _is_cjk(ch))
+        # 英文
+        non_cjk_text="".join(" " if _is_cjk(ch) else ch for ch in text)
+        non_cjk_tokens=len(non_cjk_text.split())
+        return cjk+non_cjk_tokens
+
+# 为md字符串划分段落信息
+def _split_paragraphs_with_headings(text:str):
+    lines=text.splitlines()
+    heading_stack:List[str]=[] # 当前正文的标题路径
+    paragraphs:List[Dict]=[] # 保存切分的每个段落的相关内容
+    buf:List[str]=[] # 缓冲区
+    char_pos=0 # 当前所在位置
+    # 将缓冲区的内容添加至段落
+    def flush_buf(end_pos:int):
+        if not buf:
+            return
+        content="\n".join(buf).strip()
+        if not content:
+            return
+        paragraphs.append({
+            "content":content,
+            "heading_path":" > ".join(heading_stack) if heading_stack else None,
+            "start":max(0,end_pos-len(content)),
+            "end":end_pos
+        })
+    for line in lines:
+        raw=line
+        # 标题
+        if raw.strip().startswith('#'):
+            flush_buf(char_pos)
+            # 计算#数量 确定几级标题
+            level=len(raw)-len(raw.lstrip('#'))
+            # 得到标题正文
+            title=raw.lstrip('#').strip()
+            # 更新标题路径
+            if level<=len(heading_stack):
+                heading_stack=heading_stack[:level-1]
+            heading_stack.append(title)
+            # 更新当前字符位置
+            char_pos+=len(raw)+1
+            continue
+        # 空行表示段落结束
+        if raw.strip()=="":
+            flush_buf(char_pos)
+            buf=[]
+        # 普通正文加到缓冲区
+        else:
+            buf.append(raw)
+        char_pos+=len(raw)+1
+    flush_buf(char_pos)
+    if not paragraphs:
+        paragraphs=[{
+            "content":text,
+            "heading_path":None,
+            "start":0,
+            "end":len(text)
+        }]
+    return paragraphs
+        
+    
 
 
