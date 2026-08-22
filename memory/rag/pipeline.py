@@ -1,0 +1,162 @@
+import os
+
+def _get_markdown_instance():
+    try:
+        from markitdown import MarkItDown
+        # 创建一个文档转换器实例
+        return MarkItDown()
+    except ImportError:
+        print("缺少包:markitdown")
+        return None
+
+# 检查是否支持某文件格式
+def is_markitdown_supported_format(path:str):
+    # [1]获取文件扩展名 [0]获取文件路径
+    ext=(os.path.splitext(path)[1] or '').lower()
+    supproted_formats={
+        # 文档
+        '.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx',
+        # 文本
+        '.txt','.md','.csv','.json','.xml','.html','.htm',
+        # 图片
+        '.jpg','.jpeg','.png','.gif','.bmp','.tiff','.tif','.webp',
+        # 音频
+        '.mp3','.wav','.m4a','.aac','.flac','.ogg',
+        # 压缩包
+        '.zip','.tar','.gz','.rar',
+        # code
+        '.py','.js','.ts','.java','.cpp','.c','ch','.css','.scss',
+        # 其他
+        '.log','.conf','.ini','.cfg','.yaml','.yml','.toml'
+    }
+    return ext in supproted_formats
+
+# 将支持的文件转换为md格式的字符串
+def _convert_to_markdown(path:str):
+    # 判断文件是否存在
+    if not os.path.exists(path):
+        return ""
+    # 对PDF使用增强处理
+    ext=(os.path.splitext(path)[1] or '').lower()
+    if ext=='.pdf':
+        return _enhanced_pdf_processing(path)
+    # 其他格式使用原有MarkitDown
+    md_instance=_get_markdown_instance()
+    if md_instance is None:
+        # 直接读取文件内容
+        return _fallback_text_reader(path)
+    try:
+        # 转换结果对象
+        result=md_instance.convert(path)
+        # md格式的字符串
+        text=result.markdown
+        if isinstance(text,str) and text.strip():
+            return text
+    except Exception as e:
+        print(f"MarkitDown失败:{e}")
+        return _fallback_text_reader(path)
+
+# PDF增强处理
+def _enhanced_pdf_processing(path:str):
+    # 使用现有MarkitDown提取
+    md_instance=_get_markdown_instance()
+    if md_instance is None:
+        return read_pdf(path)
+    try:
+        result=md_instance.convert(path)
+        raw_text=result.markdown
+        if not raw_text or not raw_text.strip():
+            return ""
+        # 后处理:清理和重组文本
+        cleaned_text=_post_process_pdf_text(raw_text)
+        print(f"PDF后处理完成")
+        return cleaned_text
+    except Exception as e:
+        print(f"PDF增强处理失败:{e}")
+        return read_pdf(path)
+
+# MarkitDown不可用 直接读取文件内容
+def _fallback_text_reader(path:str):
+    try:
+        # 遇到无法解码的字符直接忽略
+        with open(path,'r',encoding='utf-8',errors='ignore') as f:
+            return f.read()
+    except Exception:
+        try:
+            with open(path,'r',encoding='latin-1',errors='ignore') as f:
+                return f.read()
+        except Exception:
+            return ""
+
+# PDF专用回退
+def read_pdf(path:str):
+    try:
+        import fitz
+        pages=[]
+        with fitz.open(path) as document:
+            for page in document:
+                text=page.get_text("text").strip()
+                if text:
+                    pages.append(text)
+        return "\n\n".join(pages)
+    except Exception as e:
+        print(f"PDF解析失败:{e}")
+        return ""
+
+# 对PDF进行后处理以提高质量
+def _post_process_pdf_text(text:str):
+    import re # 正则表达式
+    # 按行分割处理
+    lines=text.splitlines()
+    cleaned_lines=[]
+    for line in lines:
+        line=line.strip()
+        if not line:
+            continue
+        # 移除明显的页眉页脚噪音
+        # 以1个或多个数字开头 以1个或多个数字结尾 因此是纯数字
+        if re.match(r'^\d+$',line): # 纯数字行(页码)
+            continue
+        cleaned_lines.append(line)
+    # 合并短行
+    merged_lines=[]
+    i=0
+    while i<len(cleaned_lines):
+        current_line=cleaned_lines[i]
+        # 如果当前行很短 尝试与下一行合并
+        if len(current_line)<60 and i+1<len(cleaned_lines):
+            next_line=cleaned_lines[i+1]
+            # 合并条件:
+            # 当前行和下一行都不是标题
+            # 当前行不以冒号结尾
+            if (not current_line.endswith('：') and (not current_line.endswith(':')) and
+            (not current_line.startswith('#')) and (not next_line.startswith('#')) and
+            len(next_line)<120):
+                merged_line=current_line+" "+next_line
+                merged_lines.append(merged_line)
+                i+=2 # 跳过下一行
+                continue
+        merged_lines.append(current_line)
+        i+=1
+    # 重新组织段落
+    paragraphs=[]
+    current_paragraph=[]
+    for line in merged_lines:
+        # 检查是否是新段落的开始(单独段落)
+        if (line.startswith('#') or # 标题
+        line.endswith(':') or # 英文冒号结尾
+        line.endswith('：')): # 中文冒号结尾
+            # 保存当前段落
+            if current_paragraph:
+                paragraphs.append(' '.join(current_paragraph))
+                current_paragraph=[]
+            paragraphs.append(line)
+        else:
+            current_paragraph.append(line)
+    # 添加最后一个段落
+    if current_paragraph:
+        paragraphs.append(' '.join(current_paragraph))
+    return '\n\n'.join(paragraphs)
+
+
+
