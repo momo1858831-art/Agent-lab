@@ -250,7 +250,66 @@ def _split_paragraphs_with_headings(text:str):
             "end":len(text)
         }]
     return paragraphs
-        
+
+def _chunk_paragraphs(paragraphs:List[Dict],chunk_tokens:int,overlap_tokens:int):
+    chunks:List[Dict]=[]
+    cur:List[Dict]=[]
+    cur_tokens=0
+    i=0
+    while i<len(paragraphs):
+        p=paragraphs[i]
+        p_tokens=_approx_token_len(p["content"])
+        # 超长段落单独加入
+        if cur_tokens+p_tokens<=chunk_tokens or not cur:
+            cur.append(p)
+            cur_tokens+=p_tokens
+            i+=1
+        else:
+            content="\n\n".join(x["content"] for x in cur)
+            start=cur[0]["start"]
+            end=cur[-1]["end"]
+            # 取出第一个(逆序)heading_path
+            heading_path=next((x["heading_path"] for x in reversed(cur) if x.get("heading_path")),None)
+            chunks.append({
+                "content":content,
+                "start":start,
+                "end":end,
+                "heading_path":heading_path
+            })
+            # 选取当前chunk末尾的一些段落作为重叠部分 保证切块间上下文的连续性
+            if overlap_tokens>0 and cur:
+                kept:List[Dict]=[]
+                kept_tokens=0
+                # 直接用overlap可能不断重复添加重叠部分
+                # 限制重叠内容 为下一个待处理段落预留空间 避免死循环
+                max_overlap_tokens=min(overlap_tokens,max(0,chunk_tokens-p_tokens))
+                for x in reversed(cur):
+                    t=_approx_token_len(x["content"])
+                    if kept_tokens+t>max_overlap_tokens:
+                        break
+                    kept.append(x)
+                    kept_tokens+=t
+                # 重叠部分
+                cur=list(reversed(kept))
+                cur_tokens=kept_tokens
+            # 未启用overlap
+            else:
+                cur=[]
+                cur_tokens=0
+    if cur:
+        content="\n\n".join(x["content"] for x in cur)
+        start=cur[0]["start"]
+        end=cur[-1]["end"]
+        # 取出第一个(逆序)heading_path
+        heading_path=next((x["heading_path"] for x in reversed(cur) if x.get("heading_path")),None)
+        chunks.append({
+            "content":content,
+            "start":start,
+            "end":end,
+            "heading_path":heading_path
+        })
+    return chunks
+
     
 
 
