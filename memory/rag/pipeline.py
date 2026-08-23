@@ -1,5 +1,6 @@
 import os
 from typing import List,Dict,Optional,Any
+import hashlib
 
 def _get_markdown_instance():
     try:
@@ -251,6 +252,7 @@ def _split_paragraphs_with_headings(text:str):
         }]
     return paragraphs
 
+# 将段落划分为chunk
 def _chunk_paragraphs(paragraphs:List[Dict],chunk_tokens:int,overlap_tokens:int):
     chunks:List[Dict]=[]
     cur:List[Dict]=[]
@@ -309,6 +311,68 @@ def _chunk_paragraphs(paragraphs:List[Dict],chunk_tokens:int,overlap_tokens:int)
             "heading_path":heading_path
         })
     return chunks
+
+# 将文件划分为chunk
+def load_and_chunk_texts(paths:List[str],chunk_size:int=800,chunk_overlap:int=100,namespace:Optional[str]=None,source_label:str="rag"):
+    chunks:List[Dict]=[]
+    seen_hashes=set()
+    # 处理不同文件
+    for path in paths:
+        if not os.path.exists(path):
+            print("File not found")
+            continue
+        print(f"RAG processing:{path}")
+        # 文件扩展名
+        ext=(os.path.splitext(path)[1] or '').lower()
+        # 转化为md格式字符串
+        markdown_text=_convert_to_markdown(path)
+        if not markdown_text.strip():
+            print(f"warning:未从{path}提取到任何内容")
+            continue
+        # 文本主要语言
+        lang=_detect_lang(markdown_text)
+        # 按内容(字符串)生成文档id
+        doc_id=hashlib.md5(f"{path}|{len(markdown_text)}".encode('utf-8')).hexdigest()
+        # 将文本划分为不同段落
+        para=_split_paragraphs_with_headings(markdown_text)
+        # 将段落划分为不同chunk
+        token_chunks=_chunk_paragraphs(para,chunk_tokens=chunk_size,overlap_tokens=chunk_overlap)
+        for ch in token_chunks:
+            content=ch["content"]
+            start=ch["start"]
+            end=ch["end"]
+            norm=content.strip()
+            if not norm:
+                continue
+            # 内容id
+            content_hash=hashlib.md5(norm.encode('utf-8')).hexdigest()
+            if content_hash in seen_hashes:
+                continue
+            seen_hashes.add(content_hash)
+            # chunk id
+            chunk_id=hashlib.md5(f"{doc_id}|{start}|{end}|{content_hash}".encode('utf-8')).hexdigest()
+            # 在原先chunk基础上添加相关信息
+            chunks.append({
+                "id":chunk_id,
+                "content":content,
+                "metadata":{
+                    "source_path":path,
+                    "file_ext":ext,
+                    "doc_id":doc_id,
+                    "lang":lang,
+                    "start":start,
+                    "end":end,
+                    "content_hash":content_hash,
+                    "namespace":namespace or "default", # 数据所属知识库
+                    "source":source_label, # 数据来源标签
+                    "external":True, # 是否为外部导入的数据
+                    "heading_path":ch.get("heading_path"),
+                    "format":"markdown", # 标准化格式
+                },
+            })
+    print(f"RAG加载完成,共{len(chunks)}条记录切片")
+    return chunks
+
 
     
 
