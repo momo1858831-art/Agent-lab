@@ -373,6 +373,50 @@ def load_and_chunk_texts(paths:List[str],chunk_size:int=800,chunk_overlap:int=10
     print(f"RAG加载完成,共{len(chunks)}条记录切片")
     return chunks
 
+# 将文本chunks写进Neo4j(存储暂未实现后续补充)
+def build_graph_from_chunks(neo4j,chunks:List[Dict]):
+    created_docs=set()
+    for ch in chunks:
+        mem_id=ch["id"]
+        meta=ch.get("metadata",{})
+        source_path=meta.get("source_path")
+        doc_id=meta.get("doc_id")
+        if doc_id and doc_id not in created_docs:
+            created_docs.add(doc_id)
+            # 创建文档节点
+            try:
+                neo4j.add_entity(
+                    entity_id=doc_id,
+                    name=os.path.basename(source_path or doc_id),
+                    entity_type="Document",
+                    properties={
+                        "source_path":source_path,
+                        "lang":meta.get("lang")
+                    }
+                )
+            except Exception:
+                pass
+        # 创建chunk节点
+        try:
+            neo4j.add_entity(
+                entity_id=mem_id,
+                name=mem_id,
+                entity_type="Memory",
+                properties={
+                    "source_path":source_path,
+                    "doc_id":doc_id,
+                    "start":meta.get("start"),
+                    "end":meta.get("end")
+                }
+            )
+        except Exception:
+            pass
+        # 建立关系
+        if doc_id:
+            try:
+                neo4j.add_relationship(from_id=doc_id,to_id=mem_id,rel_type="HAS_CHUNK",properties={})
+            except Exception:
+                pass
 
     
 
