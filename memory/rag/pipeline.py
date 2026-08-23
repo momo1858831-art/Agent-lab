@@ -418,6 +418,35 @@ def build_graph_from_chunks(neo4j,chunks:List[Dict]):
             except Exception:
                 pass
 
+# 预处理md以提高编码质量
+def _preprocess_markdown_for_embedding(text:str):
+    import re
+    # 移除标题符号但保留文本
+    # re.sub 查找匹配内容并替换
+    # 以1～6个#开头 后面带有若干空白符 替换为空
+    # re.MULTILINE表示可以同时处理多行(否则只会处理第一行)
+    text=re.sub(r'^#{1,6}\s+','',text,flags=re.MULTILINE)
+    # 移除链接但保留文本
+    # ([^\]]+)表示捕获一个或多个不是]的字符
+    # []表示字符集合 ^紧跟[时表示取反 不紧跟时表示普通字符^ 在[]外面时表示开头
+    # [^)]+ 表示匹配一个或多个不是)的字符
+    # r‘1’表示引用捕获的第一个分组
+    # [...](xxx)替换为...
+    text=re.sub(r'\[([^\]]+)\]\([^)]+\)',r'\1',text)
+    # 移除强调标记但保留文本
+    text=re.sub(r'\*\*([^*]+)\*\*',r'\1',text) # **[...]** 替换为...
+    text=re.sub(r'\*([^*]+)\*',r'\1',text) # *[...]* 替换为...
+    text=re.sub(r'`([^`]+)`',r'\1',text) # `...` 替换为...
+    # 移除代码块但保留文本
+    # [^\n]*表示匹配0个或多个非换行符
+    # \n换行符
+    # ([\s\S]*?) *?表示非贪婪匹配 \s\S分别表示空白符非空白符
+    text=re.sub(r'```[^\n]*\n([\s\S]*?)```',r'\1',text)
+    # 去除多余空白
+    text=re.sub(r'\n\s*\n','\n\n',text)
+    text=re.sub(r'[ \t]+',' ',text)
+    return text.strip()
+
     
 
 
