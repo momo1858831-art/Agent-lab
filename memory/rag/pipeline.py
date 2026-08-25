@@ -447,6 +447,26 @@ def _preprocess_markdown_for_embedding(text:str):
     text=re.sub(r'[ \t]+',' ',text)
     return text.strip()
 
+# 建立Qdrant连接
+def _create_default_vector_store(dimension:int=None):
+    if dimension is None:
+        dimension=get_dimension(384)
+    # 检查Qdrat配置
+    qdrant_url=os.getenv("Qdrant_url")
+    qdrant_api_key=os.getenv("Qdrant_apikey")
+    # 使用连接管理器
+    from ..storage.Qdrant import QdrantConnectionManager
+    return QdrantConnectionManager.get_instance(
+        url=qdrant_url,
+        api_key=qdrant_api_key,
+        collection_name="hello_agents_vectors",
+        vector_size=dimension,
+        distance="cosine"
+    )
+
+
+
+
     
 
 

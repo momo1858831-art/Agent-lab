@@ -105,7 +105,7 @@ class QdrantVectorStore:
             "dot":Distance.DOT, # 点积
             "euclidean":Distance.EUCLID # 欧式距离
         }
-        self.distance=distance_map.get(distance.lower(),Distance.COSINE)\
+        self.distance=distance_map.get(distance.lower(),Distance.COSINE)
         # 初始化客户端
         self.client=None
         self._initialize_client()
