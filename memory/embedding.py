@@ -3,6 +3,7 @@ import torch
 import os
 from dotenv import load_dotenv
 import openai
+import threading
 
 load_dotenv()
 
@@ -203,6 +204,70 @@ class APIEmbedding(EmbeddingModel):
     @property
     def dimension(self):
         return self._dimension or 0
-       
+
+_lock=threading.RLock()
+_embedder:Optional[EmbeddingModel]=None
+
+# 创建嵌入模型实例
+def create_embedding_model(model_type:str="local",**kawrgs):
+    if model_type=="local":
+        return LocalTransformerEmbedding()
+    elif model_type=="dashscope":
+        return APIEmbedding(**kawrgs)
+    elif model_type=="tfidf":
+        return TFIDFEmbedding()
+    else:
+        raise ValueError(f"不支持的模型:{model_type}")
+
+# 带回退的创建
+def create_embedding_model_with_fallback(preferred_type:str="dashscope",**kawrgs):
+    if preferred_type in ("sentence_transformer","huggingface"):
+        preferred_type="local"
+    fallback=["dashscope","local","tfidf"]
+    # 将首选放前面
+    if preferred_type in fallback:
+        fallback.remove(preferred_type)
+        fallback.insert(0,preferred_type)
+    for t in fallback:
+        try:
+            return create_embedding_model(t,**kawrgs)
+        except Exception:
+            continue
+    raise RuntimeError("所有嵌入模型均不可用")
+    
+
+def _build_embedder():
+    preferred=os.getenv("embedding_type","dashscope").strip()
+    # 根据提供商选择默认模型
+    model_name="text-embedding-v4" if preferred=="dashscope" else "sentence-transformers/all-MiniLM-L6-v2"
+    kawrgs={}
+    kawrgs["model_name"]=model_name
+    api_key=os.getenv("embedding_api")
+    base_url=os.getenv("embedding_baseurl")
+    if api_key:
+        kawrgs["api_key"]=api_key
+    if base_url:
+        kawrgs["base_url"]=base_url
+    return create_embedding_model_with_fallback(preferred_type=preferred,**kawrgs)
+
+# 获取全局共享的文本嵌入实例
+def get_text_embedder():
+    # 声明全局变量
+    global _embedder
+    if _embedder is not None:
+        return _embedder
+    with _lock:
+        if _embedder is None:
+            _embedder=_build_embedder()
+        return _embedder
+
+# 获取统一向量维度
+def get_dimension():
+    embedder=get_text_embedder()
+    dimension=embedder.dimension
+    if dimension is None or dimension==0 or (isinstance(embedder,TFIDFEmbedding) and not embedder._is_fitted):
+        raise ValueError("请先确定embedding维度")
+    return dimension
+    
     
     

@@ -1,6 +1,7 @@
 import os
 from typing import List,Dict,Optional,Any
 import hashlib
+from ..embedding import get_text_embedder,get_dimension
 
 def _get_markdown_instance():
     try:
@@ -450,7 +451,7 @@ def _preprocess_markdown_for_embedding(text:str):
 # 建立Qdrant连接
 def _create_default_vector_store(dimension:int=None):
     if dimension is None:
-        dimension=get_dimension(384)
+        dimension=get_dimension()
     # 检查Qdrat配置
     qdrant_url=os.getenv("Qdrant_url")
     qdrant_api_key=os.getenv("Qdrant_apikey")
@@ -464,6 +465,18 @@ def _create_default_vector_store(dimension:int=None):
         distance="cosine"
     )
 
+#
+def index_chunks(
+        store=None,
+        chunks:List[Dict]=None,
+        cache_db:Optional[str]=None,
+        batch_size:int=64,
+        rag_namespace:str="default"
+):
+    if not chunks:
+        print("RAG:No chunks to index")
+        return
+    embber=get_text_embedder()
 
 
 
