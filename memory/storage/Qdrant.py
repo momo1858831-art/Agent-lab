@@ -11,7 +11,7 @@ try:
     from qdrant_client.http import models
     from qdrant_client.http.models import(
         Distance,VectorParams,PointStruct, 
-        Filter,FieldCondition,MatchValue,SearchRequest
+        Filter,FieldCondition,MatchValue
     )
     QDRANT_AVAILABLE=True
 
@@ -263,18 +263,18 @@ class QdrantVectorStore:
                     payload=meta_with_timestamp # 元数据
                 )
                 points.append(point)
-                if not points:
-                    logger.warning("没有有效的向量点")
-                    return False
-                # 批量插入
-                operation_info=self.client.upsert(
-                    collection_name=self.collection_name,
-                    points=points,
-                    wait=True
-                )
-                logger.info("[Qdrant] upsert done")
-                logger.info(f"成功添加{len(points)}个向量到Qdrant")
-                return True
+            if not points:
+                logger.warning("没有有效的向量点")
+                return False
+            # 批量插入
+            operation_info=self.client.upsert(
+                collection_name=self.collection_name,
+                points=points,
+                wait=True
+            )
+            logger.info("[Qdrant] upsert done")
+            logger.info(f"成功添加{len(points)}个向量到Qdrant")
+            return True
         except Exception as e:
             logger.error(f"添加向量失败:{e}")
             return False

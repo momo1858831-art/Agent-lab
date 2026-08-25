@@ -2,6 +2,7 @@ import os
 from typing import List,Dict,Optional,Any
 import hashlib
 from ..embedding import get_text_embedder,get_dimension
+from ..storage.Qdrant import QdrantVectorStore
 
 def _get_markdown_instance():
     try:
@@ -449,7 +450,7 @@ def _preprocess_markdown_for_embedding(text:str):
     return text.strip()
 
 # 建立Qdrant连接
-def _create_default_vector_store(dimension:int=None):
+def _create_default_vector_store(dimension:int=None)->QdrantVectorStore:
     if dimension is None:
         dimension=get_dimension()
     # 检查Qdrat配置
@@ -465,7 +466,7 @@ def _create_default_vector_store(dimension:int=None):
         distance="cosine"
     )
 
-#
+# 将chunk信息存入Qdrant
 def index_chunks(
         store=None,
         chunks:List[Dict]=None,
@@ -476,10 +477,155 @@ def index_chunks(
     if not chunks:
         print("RAG:No chunks to index")
         return
+    # 获取Embedding实例
     embber=get_text_embedder()
+    dimension=None
+    processed_texts=[]
+    # 预处理切片内容
+    for c in chunks:
+        # 取内容
+        raw_content=c["content"]
+        # 预处理
+        processed_content=_preprocess_markdown_for_embedding(raw_content)
+        processed_texts.append(processed_content)
+    print(f"RAG Embedding start")
+    vecs:List[List[float]]=[]
+    for i in range(0,len(processed_texts),batch_size):
+        # 每一部分包含batch_size个chunk
+        part=processed_texts[i:i+batch_size]
+        try:
+            part_vecs=embber.encode(part)
+        except Exception:
+            raise ValueError("向量编码失败")
+        # 向量维度
+        if dimension is None:
+            dimension=get_dimension()
+        if store is None:
+            store=_create_default_vector_store(dimension)
+            print(f"RAG使用默认Qdrant存储 向量维度为:{dimension}")
+        # 转化为List[List[float]]
+        if part_vecs and not hasattr(part_vecs[0],"__len__"):
+            part_vecs=list(part_vecs)
+            part_vecs=[part_vecs]
+        else:
+            normalized_vecs=[]
+            for v in part_vecs:
+                if hasattr(v,"tolist"):
+                    normalized_vecs.append(v.tolist())
+                else:
+                    normalized_vecs.append(list(v))
+            part_vecs=normalized_vecs
+        for v in part_vecs:
+            if len(v)!=dimension:
+                print(f"向量维度异常 期望{dimension} 实际{len(v)}")
+                raise ValueError("向量维度异常")
+            vecs.append(v)
+    print("RAG Embedding suscess")
+    metas:List[Dict]=[]
+    ids:List[str]=[]
+    for ch in chunks:
+        meta={
+            "memory_id":ch["id"],
+            "user_id":"rag_user",
+            "memory_type":"rag_chunk",
+            "content":ch["content"],
+            "data_source":"rag_pipeline", # RAG标识
+            "rag_namespace":rag_namespace,
+            "is_rag_data":True,
+        }
+        # 合并chunk的metadata
+        meta.update(ch.get("metadata",{}))
+        metas.append(meta)
+        ids.append(ch["id"])
+    print("RAG Qdrant upsert start:")
+    success=store.add_vectors(vectors=vecs,metadata=metas,ids=ids)
+    if success:
+        print("RAG Qdrant upsert done")
+    else:
+        print("RAG Qdrant failed")
+        raise RuntimeError("RAG Qdrant upsert Failed")
+
+if __name__=='__main__':
+    chunks=[
+        {
+            "id":"11111111-1111-4111-8111-111111111111",
+            "content":"""
+# Python 基础
+
+Python 是一种易于学习的编程语言，支持面向对象、函数式和异步编程。
+""",
+            "metadata":{
+                "source_path":"tests/python_basic.md",
+                "file_ext":".md",
+                "doc_id":"test-doc-python",
+                "lang":"zh",
+                "start":0,
+                "end":50,
+                "content_hash":"python-basic-test-hash",
+                "namespace":"test",
+                "source":"manual_test",
+                "external":False,
+                "heading_path":["Python 基础"],
+                "format":"markdown",
+            },
+        },
+        {
+            "id":"22222222-2222-4222-8222-222222222222",
+            "content":"""
+# 向量数据库
+
+Qdrant 是一个向量数据库，可以存储文本嵌入向量，并通过相似度完成语义检索。
+""",
+            "metadata":{
+                "source_path":"tests/qdrant_intro.md",
+                "file_ext":".md",
+                "doc_id":"test-doc-qdrant",
+                "lang":"zh",
+                "start":0,
+                "end":55,
+                "content_hash":"qdrant-intro-test-hash",
+                "namespace":"test",
+                "source":"manual_test",
+                "external":False,
+                "heading_path":["向量数据库"],
+                "format":"markdown",
+            },
+        },
+        {
+            "id":"33333333-3333-4333-8333-333333333333",
+            "content":"""
+# RAG 工作流程
+
+RAG 通常先将文档切分为多个片段，再生成 embedding 并存入向量数据库。查询时会召回相关片段。
+""",
+            "metadata":{
+                "source_path":"tests/rag_workflow.md",
+                "file_ext":".md",
+                "doc_id":"test-doc-rag",
+                "lang":"zh",
+                "start":0,
+                "end":70,
+                "content_hash":"rag-workflow-test-hash",
+                "namespace":"test",
+                "source":"manual_test",
+                "external":False,
+                "heading_path":["RAG 工作流程"],
+                "format":"markdown",
+            },
+        },
+    ]
+    index_chunks(
+        chunks=chunks,
+        batch_size=2,
+        rag_namespace="test",
+    )
+
+        
+    
+
+
 
 
 
     
-
 
