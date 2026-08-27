@@ -595,11 +595,33 @@ def search_vectors(
         print("RAG搜索失败")
         return []
 
+# 查询扩展 提高RAG召回率
+def _prompt_mqe(query:str,n:int):
+    try:
+        from core.LLM_extension import LLMExtension
+        llm=LLMExtension()
+        prompt=[
+            {"role":"system","content":"你是检索查询扩展助手 生成语义等价或互补的多样化查询(将用户提出的问题写成意义近似的不同表达) 使用中文 简短 避免标点"},
+            {"role":"user","content":f"原始查询{query}\n请给出{n}个不同的原问题表述 回答时每行一个表述"}
+        ]
+        text=llm.think(messages=prompt)
+        print()
+        # 去除每一行两边的空格 - 制表符
+        lines=[
+            ln.strip("- \t")
+            for ln in text.splitlines()
+        ]
+        # 去掉空行
+        outs=[ln for ln in lines if ln]
+        return outs[:n] or query
+    except Exception as e:
+        print(f"查询扩展失败 保留原问题:{e}")
+        return query
+
 if __name__=="__main__":
-    result=search_vectors(query="python有什么用",top_k=1)
-    print(result[0]["id"])
-    print(result[0]["metadata"]["content"])
-    print(result[0]["score"])
+    results=_prompt_mqe("什么是快乐星球",3)
+    print(len(results))
+    
         
 
 
