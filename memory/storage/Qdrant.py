@@ -322,7 +322,7 @@ class QdrantVectorStore:
             # 执行搜索
             search_results=self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 query_filter=query_filter,
                 limit=limit,
                 score_threshold=score_threshold,
@@ -332,7 +332,7 @@ class QdrantVectorStore:
             )
             # 转换结果格式 原先为ScorePoint对象,包含id score payload vector等
             results=[]
-            for hit in search_results:
+            for hit in search_results.points:
                 result={
                     "id":hit.id, # 插入数据时该数据的ID
                     "score":hit.score, # 相似度分数

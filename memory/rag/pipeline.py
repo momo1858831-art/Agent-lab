@@ -545,80 +545,65 @@ def index_chunks(
         print("RAG Qdrant failed")
         raise RuntimeError("RAG Qdrant upsert Failed")
 
-if __name__=='__main__':
-    chunks=[
-        {
-            "id":"11111111-1111-4111-8111-111111111111",
-            "content":"""
-# Python 基础
+# 编码query
+def embed_query(query:str):
+    embedder=get_text_embedder()
+    try:
+        vec=embedder.encode(query)
+        dimension=get_dimension()
+        # 转化为List[float]
+        if hasattr(vec,"tolist"):
+            vec=vec.tolist()
+        else:
+            vec=list(vec)
+        if dimension!=len(vec):
+            raise ValueError("向量维度不匹配")
+        return vec
+    except Exception:
+        raise ValueError("Query Embedding failed")
 
-Python 是一种易于学习的编程语言，支持面向对象、函数式和异步编程。
-""",
-            "metadata":{
-                "source_path":"tests/python_basic.md",
-                "file_ext":".md",
-                "doc_id":"test-doc-python",
-                "lang":"zh",
-                "start":0,
-                "end":50,
-                "content_hash":"python-basic-test-hash",
-                "namespace":"test",
-                "source":"manual_test",
-                "external":False,
-                "heading_path":["Python 基础"],
-                "format":"markdown",
-            },
-        },
-        {
-            "id":"22222222-2222-4222-8222-222222222222",
-            "content":"""
-# 向量数据库
+# 搜索相关向量
+def search_vectors(
+        store=None,
+        query:str="",
+        top_k:int=8,
+        rag_namespace:Optional[str]=None,
+        only_rag_data:bool=True,
+        scored_threshold:Optional[float]=None
+):
+    if not query:
+        return []
+    qv=embed_query(query)
+    # 创建Qdrant连接
+    if store is None:
+        store=_create_default_vector_store(dimension=len(qv))
+    # RAG data过滤器
+    where={"memory_type":"rag_chunk"}
+    if only_rag_data:
+        where["is_rag_data"]=True
+        where["data_source"]="rag_pipeline"
+    if rag_namespace:
+        where["rag_namespace"]=rag_namespace # 区分不同知识库
+    try:
+        return store.search_similar(
+            query_vector=qv,
+            limit=top_k,
+            score_threshold=scored_threshold,
+            where=where
+        )
+    except Exception as e:
+        print("RAG搜索失败")
+        return []
 
-Qdrant 是一个向量数据库，可以存储文本嵌入向量，并通过相似度完成语义检索。
-""",
-            "metadata":{
-                "source_path":"tests/qdrant_intro.md",
-                "file_ext":".md",
-                "doc_id":"test-doc-qdrant",
-                "lang":"zh",
-                "start":0,
-                "end":55,
-                "content_hash":"qdrant-intro-test-hash",
-                "namespace":"test",
-                "source":"manual_test",
-                "external":False,
-                "heading_path":["向量数据库"],
-                "format":"markdown",
-            },
-        },
-        {
-            "id":"33333333-3333-4333-8333-333333333333",
-            "content":"""
-# RAG 工作流程
+if __name__=="__main__":
+    result=search_vectors(query="python有什么用",top_k=1)
+    print(result[0]["id"])
+    print(result[0]["metadata"]["content"])
+    print(result[0]["score"])
+        
 
-RAG 通常先将文档切分为多个片段，再生成 embedding 并存入向量数据库。查询时会召回相关片段。
-""",
-            "metadata":{
-                "source_path":"tests/rag_workflow.md",
-                "file_ext":".md",
-                "doc_id":"test-doc-rag",
-                "lang":"zh",
-                "start":0,
-                "end":70,
-                "content_hash":"rag-workflow-test-hash",
-                "namespace":"test",
-                "source":"manual_test",
-                "external":False,
-                "heading_path":["RAG 工作流程"],
-                "format":"markdown",
-            },
-        },
-    ]
-    index_chunks(
-        chunks=chunks,
-        batch_size=2,
-        rag_namespace="test",
-    )
+
+    
 
         
     
